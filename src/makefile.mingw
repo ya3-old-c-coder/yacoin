@@ -4,7 +4,8 @@
 
 CXX ?= g++
 
-USE_UPNP:=-
+USE_UPNP:=0
+USE_LEVELDB:=0
 USE_IPV6:=1
 
 BOOST_SUFFIX?=-mgw48-mt-sd-1_55
@@ -58,8 +59,6 @@ LDFLAGS= \
 	-Wl,--large-address-aware \
 	-static
 
-TESTDEFS = -DTEST_DATA_DIR=$(abspath test/data)
-
 ifndef USE_UPNP
 	override USE_UPNP = -
 endif
@@ -96,48 +95,74 @@ LIBS += \
 HEADERS = $(wildcard *.h)
 
 OBJS= \
-    obj/addrman.o \
     obj/alert.o \
-    obj/bitcoinrpc.o \
+    obj/version.o \
     obj/checkpoints.o \
+    obj/netbase.o \
+    obj/addrman.o \
     obj/crypter.o \
+    obj/key.o \
     obj/db.o \
     obj/init.o \
-  obj/irc.o \
-  obj/kernel.o \
-    obj/key.o \
+    obj/irc.o \
     obj/keystore.o \
     obj/main.o \
+    obj/miner.o \
     obj/net.o \
-    obj/netbase.o \
-    obj/noui.o \
-  obj/pbkdf2.o \
+    obj/stun.o \
     obj/protocol.o \
-    obj/rpcblockchain.o \
+    obj/bitcoinrpc.o \
     obj/rpcdump.o \
-    obj/rpcmining.o \
     obj/rpcnet.o \
-    obj/rpcrawtransaction.o \
+    obj/rpcmining.o \
     obj/rpcwallet.o \
+    obj/rpcblockchain.o \
+    obj/rpcrawtransaction.o \
     obj/script.o \
   obj/scrypt-jane.o \
-  obj/scrypt_mine.o \
-  obj/scrypt-x86.o \
     obj/sync.o \
     obj/util.o \
-    obj/version.o \
     obj/wallet.o \
-    obj/walletdb.o 
+    obj/walletdb.o \
+    obj/noui.o \
+    obj/kernel.o \
+    obj/pbkdf2.o \
+    obj/scrypt.o
 
 all: yacoind.exe
 
-test check: test_yacoin.exe FORCE
-	test_yacoin.exe
+#
+# LevelDB support
+#
+ifdef USE_LEVELDB
+LIBS += $(CURDIR)/leveldb/libleveldb.a $(CURDIR)/leveldb/libmemenv.a
+DEFS += $(addprefix -I,$(CURDIR)/leveldb/include) -DUSE_LEVELDB
+DEFS += $(addprefix -I,$(CURDIR)/leveldb/helpers)
+OBJS += obj/txdb-leveldb.o
+leveldb/libleveldb.a:
+	cd leveldb; make; cd ..
+obj/txdb-leveldb.o: leveldb/libleveldb.lib
+else
+OBJS += obj/txdb-bdb.o
+endif
 
-DEFS += $(addprefix -I,c:/deps/openssl-1.0.1g/include)
+ifdef USE_ASM
+OBJS += obj/scrypt-x86.o obj/scrypt-x86_64.o
+
+obj/scrypt-x86.o: scrypt-x86.S
+	$(CXX) -c $(xCXXFLAGS) -MMD -o $@ $<
 
 obj/scrypt-jane.o: scrypt-jane/scrypt-jane.c 
 	g++ -c -frandom-seed=$@ $(CFLAGS) -MMD -o $@ $<
+
+obj/scrypt-x86_64.o: scrypt-x86_64.S
+	$(CXX) -c $(xCXXFLAGS) -MMD -o $@ $<
+else
+OBJS += obj/scrypt-generic.o
+
+obj/scrypt-generic.o: scrypt-generic.c
+	$(CC) -c $(xCXXFLAGS) -MMD -o $@ $<
+endif
 
 obj/%.o: %.cpp $(HEADERS)
 	g++ -c -frandom-seed=$@ $(CFLAGS) -o $@ $<
@@ -145,20 +170,15 @@ obj/%.o: %.cpp $(HEADERS)
 obj/scrypt-x86.o: scrypt-x86.S
 	$(CXX) -c -frandom-seed=$@ $(xCXXFLAGS) -MMD -o $@ $<
 
+obj/scrypt-x86_64.o: scrypt-x86_64.S
+	$(CXX) -c -frandom-seed=$@ $(xCXXFLAGS) -MMD -o $@ $<
+
+
 yacoind.exe: $(OBJS:obj/%=obj/%)
 	g++ $(CFLAGS) $(LDFLAGS) -o $@ $(LIBPATHS) $^ $(LIBS)
 
-TESTOBJS := $(patsubst test/%.cpp,obj-test/%.o,$(wildcard test/*.cpp))
-
-obj-test/%.o: test/%.cpp $(HEADERS)
-	g++ -c $(TESTDEFS) $(CFLAGS) -o $@ $<
-
-test_yacoin.exe: $(TESTOBJS) $(filter-out obj/init.o,$(OBJS:obj/%=obj/%))
-	g++ $(CFLAGS) $(LDFLAGS) -o $@ $(LIBPATHS) $^ -lboost_unit_test_framework$(BOOST_SUFFIX) $(LIBS)
-
 clean:
-	-del /Q yacoind test_yacoin
+	-del /Q yacoind
 	-del /Q obj\*
-	-del /Q obj-test\*
 
 FORCE:
