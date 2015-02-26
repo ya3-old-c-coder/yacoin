@@ -2451,12 +2451,8 @@ uint256 CBlockIndex::GetBlockTrust() const
     if (bnTarget <= 0)
         return 0;
 
-    // Before block 420000
-    if (!fTestNet && GetBlockTime() < CONSECUTIVE_STAKE_SWITCH_TIME)
-        return (IsProofOfStake()? ((CBigNum(1)<<256) / (bnTarget+1)).getuint256() : 1);
-
     // saironiq: new trust rules (since CONSECUTIVE_STAKE_SWITCH_TIME on mainnet and always on testnet)
-    if (nTime >= CONSECUTIVE_STAKE_SWITCH_TIME || fTestNet) {
+    if (GetBlockTime() >= CONSECUTIVE_STAKE_SWITCH_TIME || fTestNet) {
         // first block trust - for future compatibility (i.e., forks :P)
         if (pprev == NULL)
             return 1;
@@ -2481,9 +2477,11 @@ uint256 CBlockIndex::GetBlockTrust() const
             if (pprev->IsProofOfStake())
                 return (bnTrust *=2).getuint256();
         }
+        // what the hell?!
+        return 0;
     }
-    // what the hell?!
-    return 0;
+
+    return (IsProofOfStake()? ((CBigNum(1)<<256) / (bnTarget+1)).getuint256() : 1);
 }
 
 bool CBlockIndex::IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned int nRequired, unsigned int nToCheck)
