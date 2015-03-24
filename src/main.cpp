@@ -1042,9 +1042,9 @@ CBigNum inline GetProofOfStakeLimit(int nHeight, unsigned int nTime)
     if(fTestNet) // separate proof of stake target limit for testnet
         return bnProofOfStakeLimit;
     if(nTime > TARGETS_SWITCH_TIME)
-        return bnProofOfStakeLimit; // 27 Planned 
+        return bnProofOfStakeLimit; 
 
-    return bnProofOfStakeLegacyLimit; // 24 
+    return bnProofOfStakeHardLimit; // YAC has always been 30 
 }
 
 // miner's coin base reward based on nBits
