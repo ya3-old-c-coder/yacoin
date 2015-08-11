@@ -2198,6 +2198,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
     {
         pindexNew->pprev = (*miPrev).second;
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
+        pindexNew->nPosBlockCount = pindexNew->pprev->nPosBlockCount + ( pindexNew->IsProofOfStake() ? 1 : 0 );
     }
 
     // ppcoin: compute chain trust score
@@ -2442,6 +2443,13 @@ bool CBlock::AcceptBlock()
     Checkpoints::AcceptPendingSyncCheckpoint();
 
     return true;
+}
+
+// yacoin: ProofOfWork/ProofOfStake block ratio
+double CBlockIndex::GetPoWPoSRatio() const
+{
+    assert ( nPosBlockCount > 0 );
+    return (double)( nHeight - nPosBlockCount ) / (double) nPosBlockCount;
 }
 
 uint256 CBlockIndex::GetBlockTrust() const
