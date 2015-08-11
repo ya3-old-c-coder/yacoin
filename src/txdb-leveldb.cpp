@@ -419,6 +419,7 @@ bool CTxDB::LoadBlockIndex()
     BOOST_FOREACH(const PAIRTYPE(int, CBlockIndex*)& item, vSortedByHeight)
     {
         CBlockIndex* pindex = item.second;
+        pindex->nPosBlockCount = ( pindex->pprev ? pindex->pprev->nPosBlockCount : 0 ) + ( pindex->IsProofOfStake() ? 1 : 0 );
         pindex->nChainTrust = (pindex->pprev ? pindex->pprev->nChainTrust : 0) + pindex->GetBlockTrust();
         // NovaCoin: calculate stake modifier checksum
         pindex->nStakeModifierChecksum = GetStakeModifierChecksum(pindex);

@@ -1168,6 +1168,7 @@ public:
     uint32_t nBlockPos;
     uint256 nChainTrust; // ppcoin: trust score of block chain
     int32_t nHeight;
+    int32_t nPosBlockCount;	// yacoin2015
 
     int64_t nMint;
     int64_t nMoneySupply;
@@ -1203,6 +1204,7 @@ public:
         nFile = 0;
         nBlockPos = 0;
         nHeight = 0;
+        nPosBlockCount = 0;
         nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1228,6 +1230,7 @@ public:
         nFile = nFileIn;
         nBlockPos = nBlockPosIn;
         nHeight = 0;
+        nPosBlockCount = 0;
         nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1276,6 +1279,8 @@ public:
     {
         return (int64_t)nTime;
     }
+
+    double GetPoWPoSRatio() const;
 
     uint256 GetBlockTrust() const;
 
