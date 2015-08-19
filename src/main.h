@@ -145,6 +145,9 @@ bool VerifySignature(const CTransaction& txFrom, const CTransaction& txTo, unsig
 // yacoin: calculate Nfactor using timestamp
 unsigned char GetNfactor(int64_t nTimestamp);
 
+// yacoin2015: GetProofOfWorkMA, GetProofOfWorkSMA
+unsigned int GetProofOfWorkMA(const CBlockIndex* pIndexLast);
+unsigned int GetProofOfWorkSMA(const CBlockIndex* pIndexLast);
 
 
 
@@ -1169,6 +1172,7 @@ public:
     uint256 nChainTrust; // ppcoin: trust score of block chain
     int32_t nHeight;
     int32_t nPosBlockCount;	// yacoin2015
+    int32_t nBitsMA;		// yacoin2015
 
     int64_t nMint;
     int64_t nMoneySupply;
@@ -1205,6 +1209,7 @@ public:
         nBlockPos = 0;
         nHeight = 0;
         nPosBlockCount = 0;
+        nBitsMA = 0;
         nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1231,6 +1236,7 @@ public:
         nBlockPos = nBlockPosIn;
         nHeight = 0;
         nPosBlockCount = 0;
+        nBitsMA = 0;
         nChainTrust = 0;
         nMint = 0;
         nMoneySupply = 0;
@@ -1281,6 +1287,8 @@ public:
     }
 
     double GetPoWPoSRatio() const;
+
+    int32_t GetSpacingThreshold() const;
 
     uint256 GetBlockTrust() const;
 

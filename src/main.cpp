@@ -15,6 +15,7 @@
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/filesystem/fstream.hpp>
+#include <boost/math/special_functions/round.hpp>
 
 #include "main.h"
 
@@ -1036,6 +1037,89 @@ unsigned char GetNfactor(int64_t nTimestamp) {
 
     return min(max(N, minNfactor), maxNfactor);
 }
+
+
+// yacoin2015: ProofOfWork target Weighted Moving Average
+unsigned int GetProofOfWorkMA(const CBlockIndex* pIndexLast)
+{
+    CBigNum wma(0);    // Weighted Moving Average of PoW target
+    unsigned int nCount = 0;
+
+    if ( pIndexLast->nTime < YACOIN_2015_SWITCH_TIME )
+        return 0;
+
+    if ( pIndexLast->IsProofOfStake() )
+    {
+        return ( pIndexLast->nBitsMA > 0 ) ? pIndexLast->nBitsMA : GetProofOfWorkSMA( pIndexLast );
+    }
+    else
+    {
+        CBigNum bn;
+
+        const CBlockIndex* pindex = pIndexLast;
+        const CBlockIndex* ppos = GetLastBlockIndex( pindex->pprev, true ); // last ProofOfStake block preceeding
+
+        if ( ppos->IsProofOfStake() && ppos->nBitsMA > 0 )
+        {
+            int overstep = ( pindex->nHeight - ppos->nHeight ) - ppos->GetSpacingThreshold();
+
+            // ignore overstepped blocks, they get punished with higher difficulty, but we exclude that from MA
+            for ( int i = 0; i < overstep; i++ )
+                pindex = pindex->pprev;
+        }
+        else    // ProofOfWork came after, last ProofOfStake block before YACOIN_2015_SWITCH_TIME
+        {
+            return GetProofOfWorkSMA( pIndexLast );
+        }
+
+
+        while ( pindex->IsProofOfWork() )
+        {
+            wma += bn.SetCompact( pindex->nBits );
+            nCount++;
+            pindex = pindex->pprev;
+        }
+
+        bn.SetCompact( ppos->nBitsMA );
+        bn = bn << 10;  // previous MA multiplication *1024
+        wma = wma << 1;   // multiplication *2
+        wma = ( wma + bn ) / ( 1024 + nCount*2 );   // new weighted MA, ~0.2% weight on last block (adj. 12~24h)
+
+        return wma.GetCompact();
+    }
+}
+
+
+// yacoin2015: ProofOfWork Simple Moving Average
+unsigned int GetProofOfWorkSMA(const CBlockIndex* pIndexLast)
+{
+    CBigNum sma(0);    // Simple Moving Average
+    unsigned int nCount = 0;
+
+    const CBlockIndex* pindex = GetLastBlockIndex( pIndexLast, false ); // ProofOfWork
+
+    while ( pindex && pindex->pprev && nCount < 14400 )    // ~10+ day window of PoW blocks
+    {
+        if ( pindex->IsProofOfWork() )
+        {
+            CBigNum bn;
+            sma += bn.SetCompact( pindex->nBits );
+            nCount++;
+        }
+
+        pindex = pindex->pprev;
+    }
+
+    if ( nCount == 0 )
+        return 0;
+    else
+    {
+        sma /= nCount;
+        return sma.GetCompact();
+    }
+}
+
+
 // select stake target limit according to hard-coded conditions
 CBigNum inline GetProofOfStakeLimit(int nHeight, unsigned int nTime)
 {
@@ -2199,6 +2283,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         pindexNew->pprev = (*miPrev).second;
         pindexNew->nHeight = pindexNew->pprev->nHeight + 1;
         pindexNew->nPosBlockCount = pindexNew->pprev->nPosBlockCount + ( pindexNew->IsProofOfStake() ? 1 : 0 );
+        pindexNew->nBitsMA = pindexNew->IsProofOfStake() ? GetProofOfWorkMA(pindexNew->pprev) : 0;
     }
 
     // ppcoin: compute chain trust score
@@ -2445,12 +2530,21 @@ bool CBlock::AcceptBlock()
     return true;
 }
 
-// yacoin: ProofOfWork/ProofOfStake block ratio
+// yacoin2015: ProofOfWork/ProofOfStake block ratio
 double CBlockIndex::GetPoWPoSRatio() const
 {
     assert ( nPosBlockCount > 0 );
     return (double)( nHeight - nPosBlockCount ) / (double) nPosBlockCount;
 }
+
+// yacoin2015: ProofOfWork block spacing threshold
+int32_t CBlockIndex::GetSpacingThreshold() const
+{
+    // always force lower spacing to encourage ProofOfStake block inclusion
+    int32_t spacing =  (int32_t) ( boost::math::round( GetPoWPoSRatio() - 0.75 ) );
+    return std::max( spacing, 1 );
+}
+
 
 uint256 CBlockIndex::GetBlockTrust() const
 {
