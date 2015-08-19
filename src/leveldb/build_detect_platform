@@ -161,6 +161,13 @@ case "$TARGET_OS" in
         PORT_FILE=port/port_win.cc
         CROSS_COMPILE=true
         ;;
+    MINGW*)
+        CROSS_COMPILE=true
+        PLATFORM=OS_WINDOWS
+        COMMON_FLAGS="$MEMCMP_FLAG -D_REENTRANT -DOS_WINDOWS -DLEVELDB_PLATFORM_WINDOWS -DBOOST_THREAD_USE_LIB"
+        PLATFORM_CXXFLAGS="-std=gnu++0x -D_WIN32_WINNT=0x0501"
+        PORT_FILE="port/port_win.cc"
+        ;;
     *)
         echo "Unknown platform!" >&2
         exit 1
