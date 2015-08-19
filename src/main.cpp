@@ -1261,6 +1261,7 @@ int64_t GetProofOfStakeReward(int64_t nCoinAge, unsigned int nBits, int64_t nTim
 }
 
 static const int64_t nTargetTimespan = 7 * 24 * 60 * 60;  // one week
+static const int64_t nTargetSpacingWorkMax = 12 * nStakeTargetSpacing; // 2-hour
 
 // get proof of work blocks max spacing according to hard-coded conditions
 int64_t inline GetTargetSpacingWorkMax(int nHeight, unsigned int nTime)
@@ -1320,25 +1321,84 @@ const CBlockIndex* GetLastBlockIndex(const CBlockIndex* pindex, bool fProofOfSta
     return pindex;
 }
 
-// YACOIN TODO
+// yacoin2015 upgrade: penalize ignoring ProofOfStake blocks with high difficulty.
+// requires adjusted PoW-PoS ratio (GetSpacingThreshold), PoW target moving average (nBitsMA)
 unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfStake)
 {
-    CBigNum bnTargetLimit = bnProofOfWorkLimit; //20
+    CBigNum bnTargetLimit = fProofOfStake ? bnProofOfStakeHardLimit : bnProofOfWorkLimit; // PoS(~uint256(0) >> 30), PoW(~uint256(0) >> 20)
+    bool fCheckPreviousPoWBlockOverstep(false); // flag, used for check and ignore overstepped PoW block difficulty
 
-    if(fProofOfStake)
+    if ( !fProofOfStake && pindexLast->nTime >= YACOIN_2015_SWITCH_TIME )
     {
-      bnTargetLimit = bnProofOfStakeHardLimit; //30
+        if ( pindexLast->IsProofOfWork() )  // PoW after PoW
+        {
+            CBigNum bnOverstepNew;
+            const CBlockIndex* ppos = GetLastBlockIndex( pindexLast->pprev, true ); // get last PoS block preceeding
+            int overstep = ( pindexLast->nHeight - ppos->nHeight ) - ppos->GetSpacingThreshold();    // distanceToPoS - AdjPowPosRatio
+
+            if ( overstep == 0 && ppos->nBitsMA > 0 )    // if true, we generate target for next (1st) overstepped block
+            {
+                bnOverstepNew.SetCompact( ppos->nBitsMA );
+                const CBlockIndex* pindex = pindexLast;
+
+                while ( pindex->IsProofOfWork() )
+                {
+                    CBigNum powTarget;
+                    powTarget.SetCompact( pindex->nBits );
+
+                    // if any recent PoW block target is lower than MA, we use that one to maximize difficulty
+                    if ( powTarget < bnOverstepNew )
+                        bnOverstepNew = powTarget;
+
+                    pindex = pindex->pprev;
+                }
+
+                bnOverstepNew = bnOverstepNew >> 1; // cut that target in half, consequently double difficulty
+                return bnOverstepNew.GetCompact();  // now it should take twice the time ...
+            }
+            else if ( overstep > 0 )
+            {
+                bnOverstepNew.SetCompact( pindexLast->nBits );
+                bnOverstepNew = bnOverstepNew >> 1; // for each overstepped block, make difficulty double
+                return bnOverstepNew.GetCompact();  // good luck ignoring PoS blocks for long ...
+            }
+            else {} // we let old rules down below do the work
+        }
+        else    // PoW after PoS
+            fCheckPreviousPoWBlockOverstep = true;
     }
 
     if (pindexLast == NULL)
         return bnTargetLimit.GetCompact(); // genesis block
 
     const CBlockIndex* pindexPrev = GetLastBlockIndex(pindexLast, fProofOfStake);
+
     if (pindexPrev->pprev == NULL)
-        return bnInitialHashTarget.GetCompact(); //20 first block 
+        return bnProofOfWorkLimit.GetCompact(); // first block: CBigNum(~uint256(0) >> 20)
+
+
+    int nPoSBlocksBetween = pindexLast->nHeight - pindexPrev->nHeight;  // calc now, pindexPrev might later point elsewhere
+
+    if ( fCheckPreviousPoWBlockOverstep )  // if calculating target for PoW after PoS block, adjustment is needed when previous PoW in overstep
+    {
+        const CBlockIndex* ppos = GetLastBlockIndex( pindexPrev->pprev, true ); // get last PoS block preceeding last PoW block
+
+        if ( ppos->nBitsMA > 0 )
+        {
+            int overstep = ( pindexPrev->nHeight - ppos->nHeight ) - ppos->GetSpacingThreshold();
+
+            // overstepped blocks are expected to be produced with delay but next difficulty (after PoS block) shouldn't be too high because of that.
+            // if overstepped, we point pindexPrev to last non-overstepped PoW block and use it's nTime and nBits to derive bnNew
+            for ( int i = 0; i < overstep; i++ )
+                pindexPrev = pindexPrev->pprev;
+        }
+    }
+
+
     const CBlockIndex* pindexPrevPrev = GetLastBlockIndex(pindexPrev->pprev, fProofOfStake);
+
     if (pindexPrevPrev->pprev == NULL)
-        return bnInitialHashTarget.GetCompact(); //20 second block 
+        return bnProofOfWorkLimit.GetCompact(); // second block: CBigNum(~uint256(0) >> 20)
 
     int64_t nActualSpacing = pindexPrev->GetBlockTime() - pindexPrevPrev->GetBlockTime();
 
@@ -1346,8 +1406,10 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     // ppcoin: retarget with exponential moving toward target spacing
     CBigNum bnNew;
     bnNew.SetCompact(pindexPrev->nBits);
-    int64_t nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(GetTargetSpacingWorkMax(pindexLast->nHeight, pindexLast->nTime), (int64_t) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
+
+    int64_t nTargetSpacing = fProofOfStake ? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64_t) nStakeTargetSpacing * (1 + nPoSBlocksBetween));
     int64_t nInterval = nTargetTimespan / nTargetSpacing;
+
     bnNew *= ((nInterval - 1) * nTargetSpacing + nActualSpacing + nActualSpacing);
     bnNew /= ((nInterval + 1) * nTargetSpacing);
 
