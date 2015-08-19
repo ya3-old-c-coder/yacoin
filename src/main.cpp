@@ -55,8 +55,8 @@ int nCoinbaseMaturity = 500;
 CBlockIndex* pindexGenesisBlock = NULL;
 int nBestHeight = -1;
 
-uint256 nBestChainTrust = 0;
-uint256 nBestInvalidTrust = 0;
+CBigNum bnBestChainTrust(0);
+CBigNum bnBestInvalidTrust(0);
 
 uint256 hashBestChain = 0;
 CBlockIndex* pindexBest = NULL;
@@ -1459,24 +1459,24 @@ bool IsInitialBlockDownload()
 
 void static InvalidChainFound(CBlockIndex* pindexNew)
 {
-    if (pindexNew->nChainTrust > nBestInvalidTrust)
+    if (pindexNew->bnChainTrust > bnBestInvalidTrust)
     {
-        nBestInvalidTrust = pindexNew->nChainTrust;
-        CTxDB().WriteBestInvalidTrust(CBigNum(nBestInvalidTrust));
+        bnBestInvalidTrust = pindexNew->bnChainTrust;
+        CTxDB().WriteBestInvalidTrust(bnBestInvalidTrust);
         uiInterface.NotifyBlocksChanged();
     }
 
-    uint256 nBestInvalidBlockTrust = pindexNew->nChainTrust - pindexNew->pprev->nChainTrust;
-    uint256 nBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->nChainTrust - pindexBest->pprev->nChainTrust) : pindexBest->nChainTrust;
+    CBigNum bnBestInvalidBlockTrust = pindexNew->bnChainTrust - pindexNew->pprev->bnChainTrust;
+    CBigNum bnBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->bnChainTrust - pindexBest->pprev->bnChainTrust) : pindexBest->bnChainTrust;
 
     printf("InvalidChainFound: invalid block=%s  height=%d  trust=%s  blocktrust=%" PRId64 "  date=%s\n",
       pindexNew->GetBlockHash().ToString().substr(0,20).c_str(), pindexNew->nHeight,
-      CBigNum(pindexNew->nChainTrust).ToString().c_str(), nBestInvalidBlockTrust.Get64(),
+      (pindexNew->bnChainTrust).ToString().c_str(), bnBestInvalidBlockTrust.getuint64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexNew->GetBlockTime()).c_str());
     printf("InvalidChainFound:  current best=%s  height=%d  trust=%s  blocktrust=%" PRId64 "  date=%s\n",
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight,
-      CBigNum(pindexBest->nChainTrust).ToString().c_str(),
-      nBestBlockTrust.Get64(),
+      (pindexBest->bnChainTrust).ToString().c_str(),
+      bnBestBlockTrust.getuint64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 }
 
@@ -2169,7 +2169,7 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
 
         // Reorganize is costly in terms of db load, as it works in a single db transaction.
         // Try to limit how much needs to be done inside
-        while (pindexIntermediate->pprev && pindexIntermediate->pprev->nChainTrust > pindexBest->nChainTrust)
+        while (pindexIntermediate->pprev && pindexIntermediate->pprev->bnChainTrust > pindexBest->bnChainTrust)
         {
             vpindexSecondary.push_back(pindexIntermediate);
             pindexIntermediate = pindexIntermediate->pprev;
@@ -2218,16 +2218,16 @@ bool CBlock::SetBestChain(CTxDB& txdb, CBlockIndex* pindexNew)
     pindexBest = pindexNew;
     pblockindexFBBHLast = NULL;
     nBestHeight = pindexBest->nHeight;
-    nBestChainTrust = pindexNew->nChainTrust;
+    bnBestChainTrust = pindexNew->bnChainTrust;
     nTimeBestReceived = GetTime();
     nTransactionsUpdated++;
 
-    uint256 nBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->nChainTrust - pindexBest->pprev->nChainTrust) : pindexBest->nChainTrust;
+    CBigNum bnBestBlockTrust = pindexBest->nHeight != 0 ? (pindexBest->bnChainTrust - pindexBest->pprev->bnChainTrust) : pindexBest->bnChainTrust;
 
     printf("SetBestChain: new best=%s  height=%d  trust=%s  blocktrust=%" PRId64 "  date=%s\n",
       hashBestChain.ToString().substr(0,20).c_str(), nBestHeight,
-      CBigNum(nBestChainTrust).ToString().c_str(),
-      nBestBlockTrust.Get64(),
+      bnBestChainTrust.ToString().c_str(),
+      bnBestBlockTrust.getuint64(),
       DateTimeStrFormat("%x %H:%M:%S", pindexBest->GetBlockTime()).c_str());
 
     // Check the version of the last 100 blocks to see if we need to upgrade:
@@ -2349,7 +2349,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
     }
 
     // ppcoin: compute chain trust score
-    pindexNew->nChainTrust = (pindexNew->pprev ? pindexNew->pprev->nChainTrust : 0) + pindexNew->GetBlockTrust();
+    pindexNew->bnChainTrust = (pindexNew->pprev ? pindexNew->pprev->bnChainTrust : CBigNum(0)) + pindexNew->GetBlockTrust();
 
     // ppcoin: compute stake entropy bit for stake modifier
     if (!pindexNew->SetStakeEntropyBit(GetStakeEntropyBit(pindexNew->nHeight)))
@@ -2388,7 +2388,7 @@ bool CBlock::AddToBlockIndex(unsigned int nFile, unsigned int nBlockPos)
         return false;
 
     // New best
-    if (pindexNew->nChainTrust > nBestChainTrust)
+    if (pindexNew->bnChainTrust > bnBestChainTrust)
         if (!SetBestChain(txdb, pindexNew))
             return false;
 
@@ -2608,24 +2608,24 @@ int32_t CBlockIndex::GetSpacingThreshold() const
 }
 
 
-uint256 CBlockIndex::GetBlockTrust() const
+CBigNum CBlockIndex::GetBlockTrust() const
 {
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
     if (bnTarget <= 0)
-        return 0;
+        return CBigNum(0);
 
     // saironiq: new trust rules (since CONSECUTIVE_STAKE_SWITCH_TIME on mainnet and always on testnet)
     if (GetBlockTime() >= CONSECUTIVE_STAKE_SWITCH_TIME || fTestNet) {
         // first block trust - for future compatibility (i.e., forks :P)
         if (pprev == NULL)
-            return 1;
+            return CBigNum(1);
 
         // PoS after PoS? no trust for ya!
         // (no need to explicitly disallow consecutive PoS
         // blocks now as they won't get any trust anyway)
         if (IsProofOfStake() && pprev->IsProofOfStake())
-            return 0;
+            return CBigNum(0);
 
         // PoS after PoW? trust = prev_trust + 1!
         if (IsProofOfStake() && pprev->IsProofOfWork())
@@ -2639,13 +2639,13 @@ uint256 CBlockIndex::GetBlockTrust() const
             // double the trust if previous block was PoS
             // (to prevent orphaning of PoS)
             if (pprev->IsProofOfStake())
-                return (bnTrust *=2).getuint256();
+                return (bnTrust *=2);
         }
         // what the hell?!
-        return 0;
+        return CBigNum(0);
     }
 
-    return (IsProofOfStake()? ((CBigNum(1)<<256) / (bnTarget+1)).getuint256() : 1);
+    return (IsProofOfStake()? (CBigNum(1)<<256) / (bnTarget+1) : CBigNum(1));
 }
 
 bool CBlockIndex::IsSuperMajority(int minVersion, const CBlockIndex* pstart, unsigned int nRequired, unsigned int nToCheck)
@@ -2928,8 +2928,8 @@ void UnloadBlockIndex()
     setStakeSeen.clear();
     pindexGenesisBlock = NULL;
     nBestHeight = 0;
-    nBestChainTrust = 0;
-    nBestInvalidTrust = 0;
+    bnBestChainTrust = CBigNum(0);
+    bnBestInvalidTrust = CBigNum(0);
     hashBestChain = 0;
     pindexBest = NULL;
 }

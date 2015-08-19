@@ -74,8 +74,8 @@ extern unsigned int nNodeLifespan;
 extern unsigned int nStakeMinAge;
 extern int nCoinbaseMaturity;
 extern int nBestHeight;
-extern uint256 nBestChainTrust;
-extern uint256 nBestInvalidTrust;
+extern CBigNum bnBestChainTrust;
+extern CBigNum bnBestInvalidTrust;
 extern uint256 hashBestChain;
 extern CBlockIndex* pindexBest;
 extern unsigned int nTransactionsUpdated;
@@ -1169,7 +1169,7 @@ public:
     CBlockIndex* pnext;
     uint32_t nFile;
     uint32_t nBlockPos;
-    uint256 nChainTrust; // ppcoin: trust score of block chain
+    CBigNum bnChainTrust; // ppcoin: trust score of block chain
     int32_t nHeight;
     int32_t nPosBlockCount;	// yacoin2015
     int32_t nBitsMA;		// yacoin2015
@@ -1210,7 +1210,7 @@ public:
         nHeight = 0;
         nPosBlockCount = 0;
         nBitsMA = 0;
-        nChainTrust = 0;
+        bnChainTrust = CBigNum(0);
         nMint = 0;
         nMoneySupply = 0;
         nFlags = 0;
@@ -1237,7 +1237,7 @@ public:
         nHeight = 0;
         nPosBlockCount = 0;
         nBitsMA = 0;
-        nChainTrust = 0;
+        bnChainTrust = CBigNum(0);
         nMint = 0;
         nMoneySupply = 0;
         nFlags = 0;
@@ -1290,7 +1290,7 @@ public:
 
     int32_t GetSpacingThreshold() const;
 
-    uint256 GetBlockTrust() const;
+    CBigNum GetBlockTrust() const;
 
     bool IsInMainChain() const
     {
