@@ -2607,13 +2607,95 @@ int32_t CBlockIndex::GetSpacingThreshold() const
     return std::max( spacing, 1 );
 }
 
-
+// yacoin2015 GetBlockTrust upgrade
 CBigNum CBlockIndex::GetBlockTrust() const
 {
     CBigNum bnTarget;
     bnTarget.SetCompact(nBits);
     if (bnTarget <= 0)
         return CBigNum(0);
+
+    if ( nTime >= YACOIN_2015_SWITCH_TIME )
+    {
+        int32_t iratio =  (int32_t)boost::math::round( GetPoWPoSRatio() );
+
+        if ( IsProofOfStake() )
+        {
+            if ( iratio < 2 )
+            // switch to ppcoin trust model occurs when real PoW:PoS ratio drops below 1.5
+            {
+                if ( (nHeight - GetLastBlockIndex(pprev,false)->nHeight) > 10 )
+                {
+                    // after 10 sequential PoS blocks, we drop trust so PoW block (with trust doubled) can get in
+                    bnTarget.SetCompact( nBitsMA );
+                }
+                else // real proof-of-stake difficulty
+                  return (CBigNum(1)<<256) / (bnTarget+1);
+            }
+            else // but until ratio drops enough, we derive ProofOfStake block trust from ProofOfWork target MA
+            {
+                if ( pprev->IsProofOfWork() )
+                {
+                    bnTarget.SetCompact( nBitsMA );
+                    bnTarget = ( bnTarget >> 1 ) + ( bnTarget >> 4 ); // target MA/2 + target MA/16 -> ~1.78x MA trust
+                }
+                else if ( iratio < 5 && pprev->IsProofOfStake() && pprev->pprev->IsProofOfWork() )
+                // Under limited conditions we award trust also to second subsequent ProofOfStake block.
+                // This happens when iratio is 3 or 4 and there is less than average PoS blocks in recent history.
+                // It also remains in force when round(PoW:PoS) ratio equals 2, so that PoS blocks can prevail one day.
+                {
+                    int32_t recentPoSBlockCount = 0;
+
+                    if ( iratio > 2 )
+                    {
+                        const CBlockIndex* pindex = pprev->pprev;
+                        for ( int i=0; i < ( iratio*iratio + iratio - 2); i++ )
+                        {
+                            pindex = pindex->pprev;
+                            if ( pindex->IsProofOfStake() )
+                                recentPoSBlockCount++;
+                        }
+                    }
+
+                    if ( iratio == 2 || recentPoSBlockCount < iratio )
+                    // now we need to beat double trust of ProofOfWork block
+                    {
+                        bnTarget.SetCompact( nBitsMA );
+                        bnTarget = ( bnTarget >> 2 ) + ( bnTarget >> 3 ); // target MA/4 + target MA/8 -> ~2.67x MA trust
+                    }
+                }
+                else
+                  // no trust for 3,4,5... subsequent ProofOfStake block
+                  // (not until iratio < 2 and ppcoin trust model takes over)
+                  return CBigNum(0);
+            }
+        }
+        else // ProofOfWork block
+        {
+            if ( pprev->IsProofOfStake() )
+                bnTarget = bnTarget >> 1; // double trust for PoW after PoS block
+
+            else // IsProofOfWork() && pprev->IsProofOfWork()
+            {
+                const CBlockIndex* ppos = GetLastBlockIndex( pprev->pprev, true ); // last ProofOfStake block preceding
+                if ( ppos->nBitsMA > 0 ) // this check is needed in case PoS block came before YACOIN_2015_SWITCH_TIME
+                {
+                    int overstep = ( this->nHeight - ppos->nHeight ) - ppos->GetSpacingThreshold();
+                    if ( overstep > 0 )
+                    {
+                        // block difficulty already high for overstepped block due GetNextTargetRequired,
+                        // we don't want to use that low nBits, rather use PoW target moving average from nBitsMA
+                        bnTarget.SetCompact( ppos->nBitsMA );
+                        // cut trust in half (by doubling target) with each overstepped block:
+                        bnTarget = bnTarget << min( overstep, bnProofOfWorkLimit.bitSize() - bnTarget.bitSize() );
+                    }
+                }
+            }
+        }
+
+        return bnProofOfWorkLimit / bnTarget;
+    }
+
 
     // saironiq: new trust rules (since CONSECUTIVE_STAKE_SWITCH_TIME on mainnet and always on testnet)
     if (GetBlockTime() >= CONSECUTIVE_STAKE_SWITCH_TIME || fTestNet) {
