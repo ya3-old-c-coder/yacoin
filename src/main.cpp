@@ -2462,8 +2462,12 @@ bool CBlock::CheckBlock(bool fCheckPOW, bool fCheckMerkleRoot, bool fCheckSig) c
     }
     else
     {
+        // yacoin2015, nNonce must be greater than zero for proof-of-work blocks
+        if (nTime >= YACOIN_2015_SWITCH_TIME && nNonce == 0)
+            return DoS(50, error("CheckBlock() : zero nonce in proof-of-work block"));
+
         // Check proof of work matches claimed amount
-        if (fCheckPOW && !CheckProofOfWork(GetHash(), nBits))
+        if (fCheckPOW && !CheckProofOfWork(GetYacoinHash(), nBits))
             return DoS(50, error("CheckBlock() : proof of work failed"));
 
         // Check timestamp

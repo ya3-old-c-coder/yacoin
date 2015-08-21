@@ -1856,13 +1856,20 @@ bool CWallet::MergeCoins(const int64_t& nAmount, const int64_t& nMinValue, const
     return true;
 }
 
+// yacoin2015
+static int64_t GetCombineCredit(int64_t nTime)
+{
+	// function to produce target credit value (rising with nTime) high enough
+	// for stake kernel hashing on stakeNfactor=4 three months after nTime until year 2020.
+	// after that date credit value continues to rise (but also GetStakeNfactor calculated from this credit input rises above 4)
+	return ((nTime+24*60*60*90)/79 - 17268736)/90/90*COIN;
+}
 
 bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, uint32_t nSearchInterval, CTransaction& txNew, CKey& key)
 {
-    // The following combine threshold is important to security
-    // Should not be adjusted if you don't understand the consequences
-    int64_t nCombineThreshold = GetProofOfWorkReward(GetLastBlockIndex(pindexBest, false)->nBits) / 3;
-
+    // yacoin2015: 
+    int64_t nCombineThreshold = GetCombineCredit((int64_t)txNew.nTime);
+    
     CBigNum bnTargetPerCoinDay;
     bnTargetPerCoinDay.SetCompact(nBits);
 
@@ -2002,8 +2009,10 @@ bool CWallet::CreateCoinStake(const CKeyStore& keystore, unsigned int nBits, uin
         vwtxPrev.push_back(kernelcoin.first);
         txNew.vout.push_back(CTxOut(0, scriptPubKeyOut));
 
-        if (GetWeight((int64_t)nBlockTime, (int64_t)txNew.nTime) < nStakeMaxAge)
+        // yacoin2015 update
+        if ( nCredit > 2*nCombineThreshold )
             txNew.vout.push_back(CTxOut(0, scriptPubKeyOut)); //split stake
+
         if (fDebug && GetBoolArg("-printcoinstake"))
             printf("CreateCoinStake : added kernel type=%d\n", whichType);
     }

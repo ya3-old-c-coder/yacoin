@@ -954,7 +954,35 @@ public:
         return (nBits == 0);
     }
 
+    // yacoin2015 update
     uint256 GetHash() const
+    {
+	    unsigned char nfactor;
+
+			 if ( nTime < 1368515488 ) nfactor = 4;
+		else if ( nTime < 1368777632 ) nfactor = 5;
+		else if ( nTime < 1369039776 ) nfactor = 6;
+		else if ( nTime < 1369826208 ) nfactor = 7;
+		else if ( nTime < 1370088352 ) nfactor = 8;
+		else if ( nTime < 1372185504 ) nfactor = 9;
+		else if ( nTime < 1373234080 ) nfactor = 10;
+		else if ( nTime < 1376379808 ) nfactor = 11;
+		else if ( nTime < 1380574112 ) nfactor = 12;
+		else if ( nTime < 1384768416 ) nfactor = 13;
+		else if ( nTime < 1401545632 ) nfactor = 14;
+		else if ( nTime < 1409934240 ) nfactor = 15;
+		else if ( nTime < 1435100064 ) nfactor = 16;
+		else if ( nTime < YACOIN_2015_SWITCH_TIME ) nfactor = 17;	// 1442777777 Sun, 20 Sep 2015 19:36:17 GMT
+		else
+          nfactor = 4;
+
+        uint256 thash;
+		scrypt_hash(CVOIDBEGIN(nVersion), sizeof(block_header), UINTBEGIN(thash), nfactor);
+		return thash;
+    }
+
+    // yacoin2015
+    uint256 GetYacoinHash() const
     {
         uint256 thash;
         scrypt_hash(CVOIDBEGIN(nVersion), sizeof(block_header), UINTBEGIN(thash), GetNfactor(nTime));
@@ -1104,7 +1132,7 @@ public:
         }
 
         // Check the header
-        if (fReadTransactions && IsProofOfWork() && !CheckProofOfWork(GetHash(), nBits))
+        if (fReadTransactions && IsProofOfWork() && !CheckProofOfWork(GetYacoinHash(), nBits))
             return error("CBlock::ReadFromDisk() : errors in block header");
 
         return true;
