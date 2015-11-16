@@ -6,8 +6,8 @@
 //static const int nConsecutiveStakeSwitchHeight = 420000;
 static const unsigned int CONSECUTIVE_STAKE_SWITCH_TIME = 1392241857;
 
-// yacoin2015 protocol switch time: 1442777777 - Sun, 20 Sep 2015 19:36:17 GMT
-static const unsigned int YACOIN_2015_SWITCH_TIME = 1442777777;
+// yacoin2015 protocol switch time: 1450000000 - Sun, 13 Dec 2015 09:46:40
+static const unsigned int YACOIN_2015_SWITCH_TIME = 1450000000;
 
 
 // YACOIN TODO 
